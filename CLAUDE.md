@@ -123,9 +123,11 @@ wrap stateless functions in classes for its own sake.
 
 ### Target and scope enforcement
 - The only approved target is whatever `config.json`'s `allowed_targets` /
-  `target_url` says. Tools never accept a model-supplied target URL or
-  container name — they always act on the configured target. Adding a new
-  approved target is a config change, not a code change.
+  `target_url` says. Tools never accept a model-supplied host or container
+  name — they always act on the configured target's host, even
+  `http_request` (the active-testing tool), which lets the model choose
+  path/method/payload but rejects a full URL or a different host outright.
+  Adding a new approved target is a config change, not a code change.
 - Never point this at a real/production host. Local, intentionally-vulnerable
   practice targets only (Juice Shop/DVWA/VulnHub-class).
 

@@ -7,9 +7,13 @@ project-wide rules; see `README.md` for setup/run instructions.
 - `config.json` — the only place target URL, container name, docker
   network, and the OpenRouter model fallback list are set. Nothing else
   should hardcode these.
-- `tools.py` — the three deterministic tools (`scan_web`,
-  `scan_dependencies`, `lookup_cve`) plus `ensure_juiceshop_running`. Tools
+- `tools.py` — four tools (`scan_web`, `scan_dependencies`, `lookup_cve`,
+  `http_request`) plus `ensure_juiceshop_running`. All but `http_request`
   take no target argument from the model; they always act on `CONFIG`.
+  `http_request` is the deliberate exception: its job is active testing, so
+  the model supplies path/method/JSON body — but the host is still always
+  `TARGET_URL` (a full URL or `//other-host` path is rejected), so the
+  model can steer *what* gets sent but never *where*.
   `scan_dependencies` resolves npm audit's GHSA advisory IDs to real CVE
   IDs via OSV.dev (`api.osv.dev/v1/vulns/{ghsa_id}`, `aliases` field) before
   handing results to the model — npm audit alone only gives GHSA IDs, not
@@ -17,6 +21,13 @@ project-wide rules; see `README.md` for setup/run instructions.
   packages famous enough that it already knew the number from training.
   This adds ~60s to the tool call (one OSV request per unique GHSA ID,
   sequential, cached within the call) — a known tradeoff, not a bug.
+  `lookup_cve` matches Exploit-DB two ways: NVD's own references, and a
+  direct match against Exploit-DB's published CVE index (downloaded once
+  per process from `gitlab.com/exploit-database/exploitdb`'s
+  `files_exploits.csv`, ~10MB, cached in `_EXPLOITDB_INDEX` for the rest of
+  the run). An empty result from both means no PoC has been published for
+  that CVE — that's a real, common outcome for library-patch CVEs, not a
+  broken lookup.
 - `graph.py` — the LangGraph `StateGraph`: an `agent` node (LLM + tools,
   handles model-fallback rotation on rate-limit/404) looping with a `tools`
   node until the model replies without requesting a tool call.

@@ -29,28 +29,56 @@ for security education. You must never suggest or attempt to act on any other \
 host.
 
 Available tools:
-- scan_web: runs an OWASP ZAP baseline scan against the approved target.
-- scan_dependencies: runs npm audit against the target's actual installed \
-dependencies, returning CVE/GHSA-tagged findings.
-- lookup_cve: given a CVE ID found by scan_dependencies, returns its CVSS \
-score and any linked Exploit-DB entry.
+- scan_web: OWASP ZAP baseline scan against the approved target (passive and \
+light-active checks: headers, cookies, misconfiguration).
+- scan_dependencies: npm audit against the target's actual installed \
+dependencies, returning real CVE/GHSA-tagged findings.
+- lookup_cve: given a CVE ID, returns its CVSS score, summary, and any \
+linked Exploit-DB entry.
+- http_request: send a live HTTP request to the approved target for active \
+testing. The host is always the approved target; you choose the path, \
+method, and JSON body. This is how you actually confirm injection and \
+access-control vulnerabilities, not just infer them.
 
-Process: call scan_web and scan_dependencies (in either order). scan_dependencies \
-may return many vulnerable packages, each tagged with a real CVE ID where \
-one exists -- call lookup_cve on every CVE ID belonging to a critical- or \
-high-severity finding, up to 15 lookup_cve calls total (prioritize critical \
-first). Do not look up moderate/low severity CVEs individually; report those \
-directly from scan_dependencies' own output instead, with cvss set to null. \
-Once you have called scan_web, scan_dependencies, and up to 15 lookup_cve \
-calls, stop calling tools and reply with ONLY a JSON object (no prose, no \
-markdown fences) with this shape:
+Process:
+1. Call scan_web and scan_dependencies once each.
+2. For every CVE ID scan_dependencies returns from a critical- or \
+high-severity finding, call lookup_cve (up to 15 calls total, critical \
+first). Report moderate/low findings directly from scan_dependencies, with \
+cvss set to null.
+3. Active testing with http_request (up to 25 calls total):
+   a. Register a throwaway test account (try a path like /api/Users/ or \
+/rest/user/register; if one 404s, adapt from the response and try the other).
+   b. Log in as that account (try /rest/user/login) and note any auth token \
+in the response body for use as the auth_token argument on later calls.
+   c. Test SQL injection: send a payload such as \
+{{"email": "' OR 1=1--", "password": "x"}} to the login endpoint. A 200 \
+response containing an auth token, despite no valid password, is a \
+confirmed authentication-bypass finding.
+   d. Test XSS: submit a payload such as \
+<iframe src="javascript:alert(`xss`)"> to a search, feedback, or comment \
+field, then GET whatever page/endpoint would display it back. Only count \
+this as confirmed if that later response actually contains your unescaped \
+payload.
+   e. Test broken access control: while logged in as your test account, \
+request or modify another user's resource by trying a numeric/sequential ID \
+other than your own (e.g. a basket, order, or user ID). A successful \
+response is a confirmed IDOR finding.
+   Only report an active-testing finding when a specific http_request \
+response actually demonstrates it -- quote the real status code and a \
+response fragment as evidence in that finding. Never report a suspected \
+vulnerability you did not confirm with a tool call.
+
+Once you have done steps 1-3 (or exhausted a call budget), stop calling \
+tools and reply with ONLY a JSON object (no prose, no markdown fences) with \
+this shape:
 
 {{
   "target": "{CONFIG['target_url']}",
   "findings": [
     {{
       "id": "F1",
-      "source": "zap" | "npm_audit",
+      "source": "zap" | "npm_audit" | "active_test",
       "title": "...",
       "evidence": "...",
       "cve": "CVE-XXXX-XXXXX or null",
@@ -61,12 +89,13 @@ markdown fences) with this shape:
   ]
 }}
 
-Include one finding entry per distinct ZAP alert type and per vulnerable \
-package from npm audit. Do not fabricate a CVE or CVSS score. Use null for \
-cve when scan_dependencies gave none, and null for cvss whenever you did not \
-call lookup_cve for that finding -- never default cvss to 0.0. Do not \
-classify findings against OWASP Top 10 or CWE categories; that mapping is \
-done manually afterward."""
+Include one finding entry per distinct ZAP alert type, per vulnerable \
+package from npm audit, and per confirmed active-testing exploit. Do not \
+fabricate a CVE, a CVSS score, or an active-testing finding you didn't \
+actually confirm via a tool response. Use null for cve/cvss when they don't \
+apply or weren't looked up -- never default cvss to 0.0. Do not classify \
+findings against OWASP Top 10 or CWE categories; that mapping is done \
+manually afterward."""
 
 
 class AgentState(TypedDict):

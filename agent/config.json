@@ -9,5 +9,5 @@
     "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3.5-lightning:free"
   ],
-  "max_recursion": 45
+  "max_recursion": 110
 }

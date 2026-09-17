@@ -1,9 +1,14 @@
 """
 Deterministic tools the agent can call. Each tool acts only on the
 pre-configured, allow-listed target loaded from config.json -- the model
-never supplies a target URL or container name itself, so it cannot be
-steered into touching anything outside scope.
+never supplies a host/container. `http_request` is the one exception to
+"the model supplies nothing": its whole job is active testing, so the model
+does choose the path/method/payload -- but the host is still always pinned
+to TARGET_URL and a full URL or different host is rejected, so the model
+can steer *what* gets sent but never *where*.
 """
+import csv
+import io
 import json
 import re
 import shutil
@@ -166,15 +171,43 @@ def scan_dependencies() -> str:
     return "\n".join(lines)
 
 
+_EXPLOITDB_INDEX: dict[str, list[str]] | None = None
+EXPLOITDB_CSV_URL = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv"
+
+
+def _exploitdb_index() -> dict[str, list[str]]:
+    """Lazily download and index Exploit-DB's public CSV (id, description,
+    CVE codes) by CVE ID, once per process. This is a direct match against
+    Exploit-DB's own data, not just whatever NVD happens to cross-reference."""
+    global _EXPLOITDB_INDEX
+    if _EXPLOITDB_INDEX is None:
+        _EXPLOITDB_INDEX = {}
+        try:
+            r = requests.get(EXPLOITDB_CSV_URL, timeout=60)
+            for row in csv.DictReader(io.StringIO(r.text)):
+                for code in row.get("codes", "").split(";"):
+                    code = code.strip()
+                    if CVE_RE.match(code):
+                        url = f"https://www.exploit-db.com/exploits/{row['id']}"
+                        _EXPLOITDB_INDEX.setdefault(code, []).append(url)
+        except requests.RequestException:
+            pass  # leave the index empty rather than fail the whole lookup
+    return _EXPLOITDB_INDEX
+
+
 @tool
 def lookup_cve(cve_id: str) -> str:
-    """Look up a CVE ID in the NVD database and return its CVSS score,
-    summary, and an Exploit-DB link if one is referenced. Pass a CVE ID
-    like 'CVE-2021-23337'."""
+    """Look up a CVE ID in the NVD database and return its CVSS score and
+    summary, plus any matching Exploit-DB entry -- checked both via NVD's
+    own references and by a direct match against Exploit-DB's published
+    CVE-to-exploit index. Pass a CVE ID like 'CVE-2021-23337'."""
     cve_id = cve_id.strip().upper()
     if not CVE_RE.match(cve_id):
         return f"'{cve_id}' is not a valid CVE ID format (expected CVE-YYYY-NNNN)."
 
+    # NVD's public API allows ~5 requests/30s without a key; a burst of
+    # lookup_cve calls in one turn was hitting 429s, so throttle here.
+    time.sleep(6)
     resp = requests.get(
         "https://services.nvd.nist.gov/rest/json/cves/2.0",
         params={"cveId": cve_id},
@@ -196,17 +229,57 @@ def lookup_cve(cve_id: str) -> str:
             score = metrics[key][0]["cvssData"]["baseScore"]
             break
 
-    exploit_links = [
-        r["url"] for r in cve.get("references", [])
-        if "exploit-db.com" in r["url"]
-    ]
+    exploit_links = sorted(set(
+        [r["url"] for r in cve.get("references", []) if "exploit-db.com" in r["url"]]
+        + _exploitdb_index().get(cve_id, [])
+    ))
 
     lines = [f"{cve_id}: CVSS={score}", f"Summary: {desc}"]
     lines.append(
         f"Exploit-DB reference(s): {', '.join(exploit_links)}"
-        if exploit_links else "Exploit-DB reference(s): none found in NVD references."
+        if exploit_links else "Exploit-DB reference(s): none found (checked NVD "
+                              "references and Exploit-DB's own CVE index)."
     )
     return "\n".join(lines)
 
 
-TOOLS = [scan_web, scan_dependencies, lookup_cve]
+_HTTP_SESSION = requests.Session()
+_METHOD_RE = re.compile(r"^(GET|POST|PUT|PATCH|DELETE)$")
+
+
+@tool
+def http_request(method: str, path: str, body: dict | None = None,
+                  auth_token: str | None = None) -> str:
+    """Send a live HTTP request to the approved target for active testing --
+    registering an account, logging in, and probing for SQL injection, XSS,
+    IDOR/broken access control, etc. `path` must be a path on the target
+    (e.g. '/rest/user/login'), never a full URL or another host. `body` is
+    sent as the JSON request body for POST/PUT/PATCH. `auth_token`, if you
+    have one from a prior login response, is sent as an `Authorization:
+    Bearer <token>` header. Returns the status code, content-type, and a
+    truncated body preview -- only report a vulnerability as confirmed if
+    this response actually demonstrates it."""
+    method = method.strip().upper()
+    if not _METHOD_RE.match(method):
+        return f"Unsupported method '{method}'. Use GET, POST, PUT, PATCH, or DELETE."
+    if "://" in path or path.startswith("//"):
+        return "path must be relative on the approved target, e.g. '/rest/user/login' -- not a full URL."
+    if not path.startswith("/"):
+        path = "/" + path
+
+    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+    try:
+        resp = _HTTP_SESSION.request(
+            method, TARGET_URL + path, json=body, headers=headers, timeout=15
+        )
+    except requests.RequestException as e:
+        return f"Request failed: {e}"
+
+    return (
+        f"{method} {path} -> HTTP {resp.status_code}\n"
+        f"Content-Type: {resp.headers.get('Content-Type')}\n"
+        f"Body (truncated to 1500 chars):\n{resp.text[:1500]}"
+    )
+
+
+TOOLS = [scan_web, scan_dependencies, lookup_cve, http_request]

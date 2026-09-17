@@ -1,0 +1,13 @@
+{
+  "allowed_targets": ["http://localhost:3000"],
+  "target_url": "http://localhost:3000",
+  "juiceshop_container": "juiceshop",
+  "juiceshop_image": "bkimminich/juice-shop",
+  "docker_network": "juiceshop-net",
+  "openrouter_models": [
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3.5-lightning:free"
+  ],
+  "max_recursion": 45
+}

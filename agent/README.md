@@ -58,15 +58,23 @@ design -- that mapping is a manual, no-GenAI step per the assignment rules.
 Add it as a column when you write up Task 2/3.
 
 ## Generalizing to a new target
-Add the target URL to `allowed_targets` in `config.json`, and point
-`target_url` / `juiceshop_container` / `juiceshop_image` at it (or add a
-second container + a second `ensure_*_running` helper in `tools.py` if it's
-not Juice Shop). `http_request`'s active-testing methodology lives in
-`graph.py`'s `SYSTEM_PROMPT` as generic web-app patterns (login, search,
-IDOR-by-ID), not Juice-Shop-specific code, but the prompt's example paths
-are still worth re-checking against a different target's actual API. No
-other code changes needed -- the allowlist check in `tools.py` fails closed
-if the configured target isn't on the list.
+Copy `config.json` to a new file (e.g. `config.dvwa.json`), point
+`target_url`/`allowed_targets` at the new target, and set
+`container_name`/`container_image`/`container_port` if this project should
+manage that target's container -- leave them empty if you start it
+yourself. Write a short `target_hints` string describing that target's
+login mechanism and any known endpoints/leads; it gets injected straight
+into `SYSTEM_PROMPT`. Run it with:
+
+```bash
+SCUTUM_CONFIG=config.dvwa.json python main.py
+```
+
+(PowerShell: `$env:SCUTUM_CONFIG="config.dvwa.json"; python main.py`.) No
+code changes needed -- every module reads `CONFIG` from whichever file
+`SCUTUM_CONFIG` names, defaulting to `config.json`, and the allowlist check
+in `tools.py` fails closed if the configured target isn't on that file's
+own `allowed_targets`. See `config.dvwa.json` for a worked second example.
 
 ## If the model's tool-calling is unreliable
 Free-tier OpenRouter models vary in tool-calling support and availability

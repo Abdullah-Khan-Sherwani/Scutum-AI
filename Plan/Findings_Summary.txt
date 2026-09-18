@@ -1,0 +1,90 @@
+========================================================================================================================
+SECTION 1: WEB-LAYER CONFIGURATION & APPLICATION SECURITY FINDINGS
+========================================================================================================================
+ID    FINDING                                              RISK LEVEL       CWE MAPPING
+------------------------------------------------------------------------------------------------------------------------
+F1    Content Security Policy (CSP) Header Not Set         Medium           CWE-693
+F2    Cross-Domain Misconfiguration                        Medium           CWE-264
+F3    Cross-Origin-Embedder-Policy Header Missing/Invalid  Low              CWE-693
+F4    Cross-Origin-Opener-Policy Header Missing/Invalid    Low              CWE-693
+F5    Dangerous JavaScript Functions                       Low              CWE-749
+F6    Deprecated Feature-Policy Header Set                 Low              CWE-16
+F7    Timestamp Disclosure - Unix                          Low              CWE-497
+F8    Modern Web Application (informational)               Informational    --
+F9    Non-Storable Content                                 Informational    CWE-524
+F10   Storable and Cacheable Content                       Informational    CWE-524
+F11   Storable but Non-Cacheable Content                   Informational    CWE-524
+========================================================================================================================
+
+========================================================================================================================
+SECTION 2: 
+Target: OWASP Juice Shop Practice Environment
+========================================================================================================================
+ID    PACKAGE                   VULNERABILITY DESCRIPTION                       CVE ID             CVSS   EXPLOIT-DB
+------------------------------------------------------------------------------------------------------------------------
+F12   crypto-js                 Weak PBKDF2 implementation                      CVE-2023-46233     9.1    None found
+F13   crypto-js                 Insecure random number generation               CVE-2026-71851     9.0    None found
+F14   decompress                Zip Slip arbitrary file write                   CVE-2026-10732     6.4    None found
+F15   decompress                Arbitrary hardlink creation                     CVE-2026-39243     5.5    None found
+F16   decompress                Archive extraction path traversal               CVE-2026-53486     9.1    None found
+F17   jsonwebtoken              Algorithm confusion / verification bypass       CVE-2015-9235      9.8    None found
+F18   jsonwebtoken              Insecure key type validation                    CVE-2022-23539     5.9    None found
+F19   jsonwebtoken              Default 'none' algorithm in verify()            CVE-2022-23540     6.4    None found
+F20   jsonwebtoken              Key retrieval misconfiguration                  CVE-2022-23541     5.0    None found
+F21   lodash                    Prototype pollution                             CVE-2018-16487     5.6    None found
+F22   lodash                    Command injection via template                  CVE-2021-23337     7.2    None found
+F25   tar                       Arbitrary file overwrite via hardlink           CVE-2026-23745     6.1    None found
+F26   tar                       Race condition symlink poisoning                CVE-2026-23950     8.8    None found
+F27   tar                       Hardlink path resolution mismatch               CVE-2026-24842     8.2    None found
+F28   tar                       Drive-relative hardlink path traversal          CVE-2026-26960     7.1    None found
+F29   tar                       Drive-relative symlink path traversal           CVE-2026-29786     6.3    None found
+F30   @cyclonedx/cyclonedx-npm  Shell injection via --workspace                 CVE-2026-55849     --     None found
+F31   engine.io                 Uncaught exception DoS                          CVE-2022-41940     7.1    None found
+F32   express-jwt               Authorization bypass                            CVE-2020-15084     7.7    None found
+F33   fast-uri                  Host confusion / SSRF (4 CVEs)                  CVE-2026-75899 +3  --     None found
+F34   got                       Redirect to UNIX socket                         CVE-2022-33987     --     None found
+F35   http-cache-semantics      ReDoS                                           CVE-2022-25881     --     None found
+F36   js-yaml                   CPU exhaustion via maxTotalMergeKeys            CVE-2026-84375     --     None found
+F37   jws                       HMAC signature verification bypass              CVE-2025-65945     --     None found
+F38   minimatch                 ReDoS via wildcards (3 CVEs)                    CVE-2026-26996 +2  --     None found
+F39   moment                    ReDoS and path traversal (3 CVEs)               CVE-2016-4055 +2   --     None found
+F40   sanitize-html             Multiple XSS/bypass (8 CVEs)                    CVE-2016-1000237+7 --     None found
+F41   socket.io-parser          Validation/DoS issues (3 CVEs)                  CVE-2023-32695 +2  --     None found
+F42   undici                    Multiple HTTP/WS vulnerabilities (12 CVEs)      CVE-2026-11525 +11 --     None found
+F43   ws                        DoS via headers/fragments (2 CVEs)              CVE-2024-37890 +1  --     None found
+========================================================================================================================
+ID    FINDING                                              RISK LEVEL       CWE MAPPING
+------------------------------------------------------------------------------------------------------------------------
+F44   SQL Injection - Authentication Bypass on Login       Critical         CWE-89
+F45   Broken Access Control (IDOR) on Basket Endpoint       High            CWE-639
+------------------------------------------------------------------------------------------------------------------------
+
+F44 -- SQL Injection - Authentication Bypass
+  Endpoint:        POST /rest/user/login
+  Payload sent:    {"email": "' OR 1=1--", "password": "x"}
+  Server response: HTTP 200, valid signed JWT decoding to
+                   {"email":"admin@juice-sh.op","role":"admin", ...}
+  Root cause:      user-supplied email concatenated directly into the login SQL query; the injected
+                   OR 1=1-- clause matches the first user row and comments out the password check.
+  Impact:          full administrative account takeover with no valid credentials.
+  Remediation:     parameterized queries / prepared statements for all authentication logic.
+  CVE/Exploit-DB:  not applicable -- custom application-logic flaw, not a versioned public package defect.
+
+F45 -- Broken Access Control / IDOR on Basket Endpoint
+  Endpoint:        GET /rest/basket/{id}
+  Setup:           agent registered + logged in as its own test account (UserId 25, own basket id 6)
+  Request sent:    GET /rest/basket/5 (a different sequential ID), using its own valid auth token
+  Server response: HTTP 200, returned basket data belonging to a different user (UserId 16), including
+                   real product contents and quantities
+  Root cause:      the endpoint checks for a valid session token but never verifies the requested basket
+                   ID actually belongs to that session's user.
+  Impact:          horizontal privilege escalation -- any authenticated user can read other users' baskets.
+  Remediation:     enforce basket.UserId == session.UserId on every object-referencing endpoint.
+  CVE/Exploit-DB:  not applicable, for the same reason as F44.
+
+------------------------------------------------------------------------------------------------------------------------
+Unconfirmed lead (not a finding): a <script>/<img onerror> payload sent to the product search endpoint
+returned an unhandled "SQLITE_ERROR: near \"xss\": syntax error" -- a signal the search feature may also
+concatenate input into SQL, but the agent did not pursue this to a working payload. Worth further testing;
+not claimed as confirmed here.
+========================================================================================================================

@@ -129,12 +129,26 @@ class AgentState(TypedDict):
 
 
 def _make_llm(model_id: str):
+    common = dict(model=model_id, timeout=90, max_retries=2)
+    if CONFIG.get("enhanced_prompt", False):
+        # Route through the local OpenAI-compatible enhanced endpoint.
+        return ChatOpenAI(
+            **common,
+            base_url="http://localhost:7860/v1",
+            api_key="local",
+            model_kwargs={
+                "godmode": True,
+                "autotune": True,
+                "parseltongue": True,
+                "parseltongue_technique": "leetspeak",
+                "parseltongue_intensity": "medium",
+                "openrouter_api_key": os.environ["OPENROUTER_API_KEY"],
+            },
+        ).bind_tools(TOOLS)
     return ChatOpenAI(
-        model=model_id,
+        **common,
         base_url="https://openrouter.ai/api/v1",
         api_key=os.environ["OPENROUTER_API_KEY"],
-        timeout=90,
-        max_retries=2,
     ).bind_tools(TOOLS)
 
 

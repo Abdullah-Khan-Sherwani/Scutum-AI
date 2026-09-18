@@ -6,7 +6,7 @@
   "container_port": 3000,
   "container_app_path": "/juice-shop",
   "docker_network": "juiceshop-net",
-  "target_hints": "OWASP Juice Shop: JSON REST API under /rest/ and /api/. Register: POST /rest/user/register {\"email\":...,\"password\":...,\"passwordRepeat\":...}. Login: POST /rest/user/login {\"email\":...,\"password\":...} -- a 200 response body contains an 'authentication.token' JWT; send it as auth_token on later calls. Baskets are IDOR candidates: GET /rest/basket/{id}, ids are small sequential integers, try one that isn't yours. Product search (GET /rest/products/search?q=...) previously returned a raw SQLite error for a script-tag payload -- worth confirming as SQL injection, not just XSS. Feedback/comment fields are additional XSS candidates.",
+  "target_hints": "OWASP Juice Shop",
   "openrouter_models": [
     "deepseek/deepseek-v4-flash-0731:free",
     "qwen/qwen3.8-27b:free",

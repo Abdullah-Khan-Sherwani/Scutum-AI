@@ -4,11 +4,12 @@
 **Target:** OWASP Juice Shop (`http://localhost:3000`), isolated local Docker instance
 **Date:** 18 September 2026
 
-> **This is a draft for you to finish, not a submission-ready file.** Section 7
-> ("Mapping to Course Concepts") is intentionally left as a placeholder — the
-> assignment requires that step to be done by hand, without AI assistance, and
-> says not to cite the LLM/search/archive tooling in that section. Everything
-> else here is drawn directly from real tool output (`agent/output/report.json`,
+> **This is a draft for you to finish, not a submission-ready file.** The
+> course-concept mapping section is not included here — the assignment
+> requires that step to be done by hand, without AI assistance, and says not
+> to cite the LLM/search/archive tooling in that section, so it's left for
+> you to write directly in your own submission. Everything else here is
+> drawn directly from real tool output (`agent/output/report.json`,
 > `agent/output/transcript.json`, `agent/output/zap-report.json`,
 > `agent/output/npm-audit.json`) — nothing below was invented.
 
@@ -244,26 +245,7 @@ findings with the most direct security impact. Full raw output is in
 `agent/output/report.json`; re-run `npm audit` after upgrading to confirm
 resolution.
 
-## 7. Mapping to Course Concepts
-
-> **To be completed by you, by hand, without AI assistance** — this is a
-> hard requirement of the assignment ("No GenAI allowed in this step ONLY",
-> and "Do NOT cite the LLM, search tool, or archive references in the final
-> write-up"). Use the findings in Sections 5–6 above as your source material.
-> A skeleton table is below purely to save you formatting time — the content
-> of the right-hand column is yours to write.
-
-| Finding | Course concept(s) it demonstrates |
-|---|---|
-| F1 — SQL Injection (login) | *(fill in — e.g. input validation, injection, authentication)* |
-| F2 — SQL Injection (search) | *(fill in)* |
-| F3 — IDOR | *(fill in — e.g. access control, authorization models)* |
-| F4 — CORS misconfiguration | *(fill in — e.g. same-origin policy, browser security model)* |
-| F5 — Default credentials | *(fill in — e.g. secure configuration, authentication)* |
-| F6–F13 — Dependency CVEs | *(fill in — e.g. software composition, supply-chain risk, cryptographic failures)* |
-| F14–F24 — Web-layer/header findings | *(fill in — e.g. defense in depth, secure headers, HTTP security)* |
-
-## 8. Remediation Priority
+## 7. Remediation Priority
 
 1. **Immediate:** parameterize the login and search queries (F1, F2) —
    these grant full application and database compromise with zero
@@ -276,7 +258,7 @@ resolution.
 5. **Medium:** upgrade js-yaml, ws (F11–F13); add missing security headers
    (F14–F19).
 
-## 9. Limitations
+## 8. Limitations
 
 - Exploit-DB matching legitimately returned no results for any CVE in this
   report — many dependency CVEs are fixed by a version bump and never

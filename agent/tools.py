@@ -249,16 +249,22 @@ _METHOD_RE = re.compile(r"^(GET|POST|PUT|PATCH|DELETE)$")
 
 @tool
 def http_request(method: str, path: str, body: dict | None = None,
-                  auth_token: str | None = None) -> str:
+                  auth_token: str | None = None, headers: dict | None = None,
+                  form: bool = False) -> str:
     """Send a live HTTP request to the approved target for active testing --
     registering an account, logging in, and probing for SQL injection, XSS,
-    IDOR/broken access control, etc. `path` must be a path on the target
-    (e.g. '/rest/user/login'), never a full URL or another host. `body` is
-    sent as the JSON request body for POST/PUT/PATCH. `auth_token`, if you
-    have one from a prior login response, is sent as an `Authorization:
-    Bearer <token>` header. Returns the status code, content-type, and a
-    truncated body preview -- only report a vulnerability as confirmed if
-    this response actually demonstrates it."""
+    CORS misconfiguration, broken access control, mass assignment, and other
+    web vulnerabilities. `path` must be a path on the target (e.g.
+    '/rest/user/login'), never a full URL or another host. `body` is sent as
+    the JSON request body for POST/PUT/PATCH -- set `form=True` to send it
+    form-urlencoded instead (needed for HTML-form-based logins). `auth_token`,
+    if you have one from a prior login response, is sent as an
+    `Authorization: Bearer <token>` header. `headers` lets you set arbitrary
+    extra request headers (e.g. a spoofed `Origin` to test CORS); an
+    `Authorization` entry in `headers` overrides `auth_token`. Returns the
+    status code, every response header, and a truncated body preview -- only
+    report a vulnerability as confirmed if this response actually
+    demonstrates it."""
     method = method.strip().upper()
     if not _METHOD_RE.match(method):
         return f"Unsupported method '{method}'. Use GET, POST, PUT, PATCH, or DELETE."
@@ -267,17 +273,26 @@ def http_request(method: str, path: str, body: dict | None = None,
     if not path.startswith("/"):
         path = "/" + path
 
-    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+    req_headers = dict(headers) if headers else {}
+    if auth_token and "Authorization" not in req_headers:
+        req_headers["Authorization"] = f"Bearer {auth_token}"
+
     try:
-        resp = _HTTP_SESSION.request(
-            method, TARGET_URL + path, json=body, headers=headers, timeout=15
-        )
+        if form:
+            resp = _HTTP_SESSION.request(
+                method, TARGET_URL + path, data=body, headers=req_headers, timeout=15
+            )
+        else:
+            resp = _HTTP_SESSION.request(
+                method, TARGET_URL + path, json=body, headers=req_headers, timeout=15
+            )
     except requests.RequestException as e:
         return f"Request failed: {e}"
 
+    header_lines = "\n".join(f"{k}: {v}" for k, v in resp.headers.items())
     return (
         f"{method} {path} -> HTTP {resp.status_code}\n"
-        f"Content-Type: {resp.headers.get('Content-Type')}\n"
+        f"Response headers:\n{header_lines}\n"
         f"Body (truncated to 1500 chars):\n{resp.text[:1500]}"
     )
 

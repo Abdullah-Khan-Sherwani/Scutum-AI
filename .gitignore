@@ -16,3 +16,4 @@ Thumbs.db
 
 # Claude Code internal state
 .claude/
+.superpowers/

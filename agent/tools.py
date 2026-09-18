@@ -145,7 +145,7 @@ def scan_dependencies() -> str:
     if not raw:
         return f"npm audit produced no output. stderr: {result.stderr[-2000:]}"
 
-    audit_path.write_text(raw)
+    audit_path.write_text(raw, encoding="utf-8")
     data = json.loads(raw)
 
     vulns = data.get("vulnerabilities", {})
@@ -180,7 +180,7 @@ def scan_dependencies() -> str:
             f"{'; '.join(titles) or 'see npm-audit.json'} [range: {info.get('range')}]"
         )
 
-    (OUTPUT_DIR / "ghsa_cve_map.json").write_text(json.dumps(ghsa_cache, indent=2))
+    (OUTPUT_DIR / "ghsa_cve_map.json").write_text(json.dumps(ghsa_cache, indent=2), encoding="utf-8")
     return "\n".join(lines)
 
 

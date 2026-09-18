@@ -57,15 +57,16 @@ def main() -> None:
     messages = final_state["messages"]
     (OUTPUT_DIR / "transcript.json").write_text(
         json.dumps([m.model_dump() if hasattr(m, "model_dump") else m for m in messages],
-                   indent=2, default=str)
+                   indent=2, default=str),
+        encoding="utf-8",
     )
 
     final_text = messages[-1].content
-    (OUTPUT_DIR / "report_raw.txt").write_text(final_text)
+    (OUTPUT_DIR / "report_raw.txt").write_text(final_text, encoding="utf-8")
 
     try:
         report = json.loads(final_text)
-        (OUTPUT_DIR / "report.json").write_text(json.dumps(report, indent=2))
+        (OUTPUT_DIR / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"\nDone. {len(report.get('findings', []))} finding(s). "
               f"See output/report.json and output/report_raw.txt")
     except json.JSONDecodeError:

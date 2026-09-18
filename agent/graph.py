@@ -146,7 +146,7 @@ def build_graph():
         while True:
             try:
                 return {"messages": [state["llm"].invoke(agent_state["messages"])]}
-            except (openai.RateLimitError, openai.NotFoundError, openai.APIStatusError) as e:
+            except (openai.RateLimitError, openai.NotFoundError, openai.APIStatusError, ValueError) as e:
                 state["idx"] += 1
                 if state["idx"] >= len(model_ids):
                     raise

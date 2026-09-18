@@ -1,0 +1,17 @@
+{
+  "allowed_targets": ["http://localhost:4280"],
+  "target_url": "http://localhost:4280",
+  "container_name": "",
+  "container_image": "",
+  "container_port": "",
+  "container_app_path": "/juice-shop",
+  "docker_network": "juiceshop-net",
+  "openrouter_models": [
+    "deepseek/deepseek-v4-flash-0731:free",
+    "qwen/qwen3.8-27b:free",
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3.5-lightning:free"
+  ],
+  "max_recursion": 160
+}

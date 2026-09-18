@@ -1,0 +1,2 @@
+ Now let me run the required scans (scan_web, scan_dependencies) and start recon since registration returned an unexpected 500 error — I need to discover the correct endpoints by fetching the root.
+

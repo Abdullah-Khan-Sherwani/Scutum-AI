@@ -1,0 +1,245 @@
+{
+  "target": "http://localhost:3000",
+  "findings": [
+    {
+      "id": "F1",
+      "source": "active_test",
+      "title": "SQL Injection in POST /rest/user/login -> Authentication Bypass + Admin Privilege Escalation",
+      "evidence": "Request body {\"email\":\"' OR 1=1--\",\"password\":\"x\"} returned HTTP 200 with a valid, server-signed JWT. Base64url-decoding the token payload showed {\"id\":1,\"username\":\"\",\"email\":\"admin@juice-sh.op\",\"password\":\"0192023a7bbd73250516f069df18b500\",\"role\":\"admin\",...} -- the application signed an admin session token for the attacker despite no valid password being supplied.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Use parameterized queries / an ORM for the login query, never concatenate the email parameter into SQL. Apply least-privilege DB accounts. Add strict server-side email format validation as defense-in-depth. After fixing, rotate JWT/deluxeToken secrets and force a password reset for all users."
+    },
+    {
+      "id": "F2",
+      "source": "active_test",
+      "title": "SQL Injection in GET /rest/products/search?q= -> Full Data Exfiltration",
+      "evidence": "Three independent confirmations on the q parameter: (1) q=' OR 1=1-- returned HTTP 200 with the entire products table (id:1 Raspberry Juice, id:2 Apple Juice, ...) -- boolean-based injection proven by row count change. (2) q=car' UNION SELECT id,email,password,role FROM users-- returned HTTP 200 with rows from the users table including admin@juice-sh.op, a bcrypt password hash, and role:admin -- UNION-based injection proving full database read access. (3) q=' (unterminated quote) returned HTTP 500 with a raw SQLITE_ERROR: incomplete input leaked in the response body -- error-based confirmation that user input reaches the SQL layer unsanitized.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Parameterize the search query (the ORM/query layer appears to string-concatenate q directly). Never echo raw database error messages to the client. Apply least-privilege DB accounts so a compromised query context can't read unrelated tables like users."
+    },
+    {
+      "id": "F3",
+      "source": "active_test",
+      "title": "Broken Access Control (IDOR) on GET /rest/basket/{id}",
+      "evidence": "Using only a freshly-registered, low-privilege customer account's JWT in Authorization: Bearer, GET /rest/basket/1 returned HTTP 200 with the admin account's basket contents ({\"id\":1,\"user_id\":1,\"products\":[...]})  -- no ownership check, only an incrementable integer id gates the resource.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Enforce object-level authorization server-side: compare the authenticated user's id against basket.user_id before returning data, on every basket-related endpoint (GET/PUT/DELETE)."
+    },
+    {
+      "id": "F4",
+      "source": "active_test",
+      "title": "CORS Misconfiguration -- Wildcard Origin with Credentials Allowed on Authenticated Endpoints",
+      "evidence": "GET /rest/basket/1 with a spoofed Origin: https://evil.attacker.example header, using a valid Bearer token, returned HTTP 200 with response headers Access-Control-Allow-Origin: * and Access-Control-Allow-Credentials: true together -- confirmed on an authenticated endpoint, not just a static asset. The Origin header is not validated or allow-listed anywhere in the observed responses.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Reflect only allow-listed origins dynamically -- never pair a wildcard Access-Control-Allow-Origin with Access-Control-Allow-Credentials: true. Validate the Origin header on all sensitive/authenticated endpoints."
+    },
+    {
+      "id": "F5",
+      "source": "active_test",
+      "title": "Default Administrator Credentials Active",
+      "evidence": "POST /rest/user/login with {\"email\":\"admin@juice-sh.op\",\"password\":\"admin123\"} returned HTTP 200 with a full, valid admin session (id:1, role:admin) and a signed JWT -- the stock default admin account and password are unchanged and reachable.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Force credential rotation at deployment/first-boot; reject well-known default credentials on the admin account specifically."
+    },
+    {
+      "id": "F6",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: crypto-js - Weak PBKDF2 Implementation",
+      "evidence": "npm audit flagged crypto-js (critical) for CVE-2023-46233 in range <=4.1.1. lookup_cve confirmed CVSS=9.1: \"Prior to version 4.2.0, crypto-js PBKDF2 is 1,000 times weaker than originally specified in 1993, and at least 1,300,000 times weaker than current industry standard\" -- defaults to SHA1 with a single iteration. No Exploit-DB reference found.",
+      "cve": "CVE-2023-46233",
+      "cvss": 9.1,
+      "exploit_db": null,
+      "remediation": "Upgrade crypto-js to >=4.2.0, or configure it to use SHA256 with at least 250,000 iterations as a workaround."
+    },
+    {
+      "id": "F7",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: crypto-js - Insufficient Entropy in Random Number Generation",
+      "evidence": "npm audit flagged crypto-js (critical) for CVE-2026-71851 in range <=4.1.1. lookup_cve confirmed CVSS=9.0: versions prior to 4.0.0 generate randomness using a non-cryptographic PRNG seeded from Math.random(), producing an effective search space small enough to enumerate on commodity hardware -- e.g. wallet applications using this as an entropy source for recovery phrases are directly exploitable. No Exploit-DB reference found.",
+      "cve": "CVE-2026-71851",
+      "cvss": 9.0,
+      "exploit_db": null,
+      "remediation": "Upgrade crypto-js to >=4.0.0. Never use crypto-js's random-number generator for cryptographic key/secret material below that version."
+    },
+    {
+      "id": "F8",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: decompress - Zip Slip Arbitrary File Write via Symlink",
+      "evidence": "npm audit flagged decompress (critical) for CVE-2026-10732 (all versions). lookup_cve confirmed CVSS=6.4: a crafted ZIP with two entries sharing a path (a symlink, then a regular file) writes the file's content through the symlink outside the output directory, bypassing existing path-traversal protections -- can lead to RCE. No Exploit-DB reference found.",
+      "cve": "CVE-2026-10732",
+      "cvss": 6.4,
+      "exploit_db": null,
+      "remediation": "Upgrade decompress to a patched release; validate/sandbox any archive extraction from untrusted sources regardless."
+    },
+    {
+      "id": "F9",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: decompress - Arbitrary Hardlink Creation",
+      "evidence": "npm audit flagged decompress (critical) for CVE-2026-39243 (versions before 4.2.2). lookup_cve confirmed CVSS=5.5: hardlink entries' linkname field is passed to fs.link() without validation, letting a crafted archive create a hardlink to any file on the same filesystem, enabling read disclosure and file corruption. No Exploit-DB reference found.",
+      "cve": "CVE-2026-39243",
+      "cvss": 5.5,
+      "exploit_db": null,
+      "remediation": "Upgrade decompress to >=4.2.2 or later patched release."
+    },
+    {
+      "id": "F10",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: decompress - Archive Extraction Path Traversal",
+      "evidence": "npm audit flagged decompress (critical) for CVE-2026-53486 (versions before 10.2.1/11.1.3). lookup_cve confirmed CVSS=9.1: hardlink/symlink entries are created without checking target location, path containment used a naive string-prefix comparison, and setuid/setgid/sticky bits weren't stripped -- archive extraction can write files outside the target directory. No Exploit-DB reference found.",
+      "cve": "CVE-2026-53486",
+      "cvss": 9.1,
+      "exploit_db": null,
+      "remediation": "Upgrade to @xhmikosr/decompress >=10.2.1 or >=11.1.3."
+    },
+    {
+      "id": "F11",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: js-yaml - CPU Exhaustion via Merge Key Processing",
+      "evidence": "npm audit flagged js-yaml (high) for CVE-2026-84375 (3.0.0-3.15.1, 4.0.0-4.3.1). lookup_cve confirmed CVSS=7.5: maxTotalMergeKeys doesn't count empty mapping sources when processing the << merge key, so a small crafted YAML document can cause O(N*K) CPU consumption without ever reaching the configured resource limit. No Exploit-DB reference found.",
+      "cve": "CVE-2026-84375",
+      "cvss": 7.5,
+      "exploit_db": null,
+      "remediation": "Upgrade js-yaml to >=3.15.2 or >=4.3.2."
+    },
+    {
+      "id": "F12",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: ws - DoS via excessive HTTP headers",
+      "evidence": "npm audit flagged ws (high) for CVE-2024-37890 in the range 7.0.0-7.5.10. lookup_cve confirmed CVSS=7.5: \"A request with a number of headers exceeding the server.maxHeadersCount threshold could be used to crash a ws server.\" No Exploit-DB reference found (checked NVD references and Exploit-DB's own CVE index).",
+      "cve": "CVE-2024-37890",
+      "cvss": 7.5,
+      "exploit_db": null,
+      "remediation": "Upgrade ws to a patched release (>=8.17.1, 7.5.10, 6.2.4, or 5.2.4). If immediate upgrade isn't possible, cap the maximum number of HTTP headers at a reverse proxy."
+    },
+    {
+      "id": "F13",
+      "source": "npm_audit",
+      "title": "Vulnerable Dependency: ws - Memory exhaustion DoS via tiny fragments",
+      "evidence": "npm audit flagged ws (high) for CVE-2026-48779 in the range 1.1.0-5.2.4 (and other ranges below patched versions). lookup_cve confirmed CVSS=7.5: \"A peer can send a high volume of exceptionally small fragments and data chunks ... to force the remote peer into allocating and holding structural wrappers that consume far more memory than the default documented message-size limit, leading to process termination due to OOM.\" No Exploit-DB reference found (checked NVD references and Exploit-DB's own CVE index).",
+      "cve": "CVE-2026-48779",
+      "cvss": 7.5,
+      "exploit_db": null,
+      "remediation": "Upgrade ws to >=5.2.5 (or the latest patched 8.x/7.x/6.x line). Apply rate/resource limits at the WebSocket layer and run the app with container memory limits so partial exhaustion is contained to a single instance."
+    },
+    {
+      "id": "F14",
+      "source": "zap",
+      "title": "Content Security Policy (CSP) Header Not Set",
+      "evidence": "ZAP baseline scan: risk=Medium (confidence High), instances=5, cweid=693. No Content-Security-Policy header present on scanned responses.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Add a Content-Security-Policy header restricting script/style/object sources to trusted origins, as defense-in-depth against XSS and data injection."
+    },
+    {
+      "id": "F15",
+      "source": "zap",
+      "title": "Cross-Domain Misconfiguration",
+      "evidence": "ZAP baseline scan: risk=Medium (confidence Medium), instances=5, cweid=264. Responses permit cross-domain access in a way ZAP flags as overly permissive.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Restrict cross-domain policies (CORS headers, crossdomain.xml/clientaccesspolicy.xml if present) to explicitly trusted origins only."
+    },
+    {
+      "id": "F16",
+      "source": "zap",
+      "title": "Cross-Origin-Embedder-Policy Header Missing or Invalid",
+      "evidence": "ZAP baseline scan: risk=Low (confidence Medium), instances=5, cweid=693.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Set Cross-Origin-Embedder-Policy: require-corp (or credentialless) to enable cross-origin isolation and mitigate speculative-execution/side-channel data leaks."
+    },
+    {
+      "id": "F17",
+      "source": "zap",
+      "title": "Cross-Origin-Opener-Policy Header Missing or Invalid",
+      "evidence": "ZAP baseline scan: risk=Low (confidence Medium), instances=5, cweid=693.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Set Cross-Origin-Opener-Policy: same-origin to isolate the browsing context from cross-origin windows."
+    },
+    {
+      "id": "F18",
+      "source": "zap",
+      "title": "Dangerous JS Functions",
+      "evidence": "ZAP baseline scan: risk=Low (confidence Low), instances=1, cweid=749.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Review flagged client-side code for use of dangerous functions (e.g. eval, document.write) and replace with safe equivalents."
+    },
+    {
+      "id": "F19",
+      "source": "zap",
+      "title": "Deprecated Feature-Policy Header Set",
+      "evidence": "ZAP baseline scan: risk=Low (confidence Medium), instances=5, cweid=16.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Replace the deprecated Feature-Policy header with Permissions-Policy."
+    },
+    {
+      "id": "F20",
+      "source": "zap",
+      "title": "Timestamp Disclosure - Unix",
+      "evidence": "ZAP baseline scan: risk=Low (confidence Low), instances=5, cweid=497.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Avoid exposing raw Unix timestamps in responses where they aren't required; treat as low-severity information disclosure."
+    },
+    {
+      "id": "F21",
+      "source": "zap",
+      "title": "Modern Web Application (Informational)",
+      "evidence": "ZAP baseline scan: risk=Informational (confidence Medium), instances=5. Informational note that the app is a modern JS-heavy application (affects crawl coverage, not a vulnerability itself).",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "None required -- informational."
+    },
+    {
+      "id": "F22",
+      "source": "zap",
+      "title": "Non-Storable Content",
+      "evidence": "ZAP baseline scan: risk=Informational (confidence Medium), instances=2, cweid=524.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Review cache-control headers on the flagged responses if caching behavior is intended to differ."
+    },
+    {
+      "id": "F23",
+      "source": "zap",
+      "title": "Storable and Cacheable Content",
+      "evidence": "ZAP baseline scan: risk=Informational (confidence Medium), instances=2, cweid=524.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "Confirm cacheable responses don't contain sensitive/per-user data; set Cache-Control: private or no-store on any that do."
+    },
+    {
+      "id": "F24",
+      "source": "zap",
+      "title": "Storable but Non-Cacheable Content",
+      "evidence": "ZAP baseline scan: risk=Informational (confidence Medium), instances=5, cweid=524.",
+      "cve": null,
+      "cvss": null,
+      "exploit_db": null,
+      "remediation": "None required -- informational; confirm intended caching behavior matches this classification."
+    }
+  ]
+}

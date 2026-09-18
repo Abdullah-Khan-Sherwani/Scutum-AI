@@ -3,6 +3,7 @@ Entry point: brings up the isolated target, runs the LangGraph agent to
 completion, and writes the transcript and final report to output/.
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,7 +12,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-CONFIG = json.loads((Path(__file__).parent / "config.json").read_text())
+CONFIG_PATH = Path(__file__).parent / os.environ.get("SCUTUM_CONFIG", "config.json")
+CONFIG = json.loads(CONFIG_PATH.read_text())
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -32,9 +34,12 @@ def main() -> None:
 
     check_docker()
 
-    from tools import ensure_juiceshop_running
-    print(f"Starting {CONFIG['juiceshop_container']} on {CONFIG['docker_network']} ...")
-    ensure_juiceshop_running()
+    from tools import ensure_target_running
+    if CONFIG.get("container_image"):
+        print(f"Starting {CONFIG['container_name']} on {CONFIG['docker_network']} ...")
+    else:
+        print("No container configured -- assuming target was started externally.")
+    ensure_target_running()
     print(f"Target ready at {CONFIG['target_url']}")
 
     from graph import build_graph, initial_messages

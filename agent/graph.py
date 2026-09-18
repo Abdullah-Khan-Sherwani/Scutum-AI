@@ -20,7 +20,8 @@ from langgraph.prebuilt import ToolNode
 
 from tools import TOOLS
 
-CONFIG = json.loads((Path(__file__).parent / "config.json").read_text())
+CONFIG_PATH = Path(__file__).parent / os.environ.get("SCUTUM_CONFIG", "config.json")
+CONFIG = json.loads(CONFIG_PATH.read_text())
 
 SYSTEM_PROMPT = f"""You are an authorized security assessment agent operating \
 in an isolated local lab. Your ONLY approved target is {CONFIG['target_url']} \

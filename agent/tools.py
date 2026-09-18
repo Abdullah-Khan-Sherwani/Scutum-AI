@@ -1,34 +1,42 @@
 """
 Deterministic tools the agent can call. Each tool acts only on the
-pre-configured, allow-listed target loaded from config.json -- the model
-never supplies a host/container. `http_request` is the one exception to
-"the model supplies nothing": its whole job is active testing, so the model
-does choose the path/method/payload -- but the host is still always pinned
+pre-configured, allow-listed target loaded from config.json (or the file
+named by the SCUTUM_CONFIG env var, for pointing this project at a
+different target without touching code) -- the model never supplies a
+model host/container. `http_request` is the one exception to "the model
+supplies nothing": its whole job is active testing, so the model does
+choose the path/method/payload -- but the host is still always pinned
 to TARGET_URL and a full URL or different host is rejected, so the model
 can steer *what* gets sent but never *where*.
 """
 import csv
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from langchain_core.tools import tool
 
 NPM_CMD = shutil.which("npm") or "npm"  # Windows needs the resolved npm.cmd path
 
-CONFIG = json.loads((Path(__file__).parent / "config.json").read_text())
+CONFIG_PATH = Path(__file__).parent / os.environ.get("SCUTUM_CONFIG", "config.json")
+CONFIG = json.loads(CONFIG_PATH.read_text())
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 TARGET_URL = CONFIG["target_url"]
-CONTAINER = CONFIG["juiceshop_container"]
+CONTAINER = CONFIG["container_name"]
 NETWORK = CONFIG["docker_network"]
-IMAGE = CONFIG["juiceshop_image"]
+IMAGE = CONFIG["container_image"]
+CONTAINER_PORT = CONFIG["container_port"]
+CONTAINER_APP_PATH = CONFIG["container_app_path"]
+HOST_PORT = urlparse(TARGET_URL).port
 
 if TARGET_URL not in CONFIG["allowed_targets"]:
     raise RuntimeError(f"Configured target {TARGET_URL} is not on the allowlist")
@@ -40,22 +48,26 @@ def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
-def ensure_juiceshop_running() -> None:
-    """Idempotently create the isolated network and start the Juice Shop
-    container if it isn't already running, then wait until it answers."""
-    _run(["docker", "network", "create", NETWORK], timeout=15)  # ignore "already exists"
+def ensure_target_running() -> None:
+    """Idempotently create the isolated network and start the target
+    container if one is configured and isn't already running, then wait
+    until the target answers. If no container_image is configured, this
+    assumes the target was started outside this project and only waits
+    for it to respond -- e.g. a second target you started by hand."""
+    if IMAGE:
+        _run(["docker", "network", "create", NETWORK], timeout=15)  # ignore "already exists"
 
-    inspect = _run(["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER], timeout=15)
-    if inspect.returncode != 0:
-        started = _run(
-            ["docker", "run", "-d", "--name", CONTAINER, "--network", NETWORK,
-             "-p", "3000:3000", IMAGE],
-            timeout=60,
-        )
-        if started.returncode != 0:
-            raise RuntimeError(f"Failed to start Juice Shop container: {started.stderr}")
-    elif inspect.stdout.strip() != "true":
-        _run(["docker", "start", CONTAINER], timeout=30)
+        inspect = _run(["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER], timeout=15)
+        if inspect.returncode != 0:
+            started = _run(
+                ["docker", "run", "-d", "--name", CONTAINER, "--network", NETWORK,
+                 "-p", f"{HOST_PORT}:{CONTAINER_PORT}", IMAGE],
+                timeout=60,
+            )
+            if started.returncode != 0:
+                raise RuntimeError(f"Failed to start {CONTAINER}: {started.stderr}")
+        elif inspect.stdout.strip() != "true":
+            _run(["docker", "start", CONTAINER], timeout=30)
 
     for _ in range(30):
         try:
@@ -64,7 +76,7 @@ def ensure_juiceshop_running() -> None:
         except requests.RequestException:
             pass
         time.sleep(2)
-    raise RuntimeError(f"Juice Shop did not become ready at {TARGET_URL} in time")
+    raise RuntimeError(f"Target did not become ready at {TARGET_URL} in time")
 
 
 @tool
@@ -73,12 +85,13 @@ def scan_web() -> str:
     return a summary of alerts (XSS, missing security headers, insecure
     cookies, etc). Full JSON report is written to output/zap-report.json."""
     report_path = OUTPUT_DIR / "zap-report.json"
+    zap_target = f"http://host.docker.internal:{HOST_PORT}"
     result = _run(
         [
-            "docker", "run", "--rm", "--network", NETWORK,
+            "docker", "run", "--rm",
             "-v", f"{OUTPUT_DIR}:/zap/wrk/:rw",
             "zaproxy/zap-stable", "zap-baseline.py",
-            "-t", f"http://{CONTAINER}:3000",
+            "-t", zap_target,
             "-J", "zap-report.json",
         ],
         timeout=600,
@@ -118,7 +131,7 @@ def scan_dependencies() -> str:
     pkg_dir = OUTPUT_DIR / "juiceshop_pkg"
     pkg_dir.mkdir(exist_ok=True)
     for fname in ("package.json", "package-lock.json"):
-        cp = _run(["docker", "cp", f"{CONTAINER}:/juice-shop/{fname}", str(pkg_dir / fname)],
+        cp = _run(["docker", "cp", f"{CONTAINER}:{CONTAINER_APP_PATH}/{fname}", str(pkg_dir / fname)],
                    timeout=30)
         if cp.returncode != 0:
             return f"Could not copy {fname} out of the container: {cp.stderr[-500:]}"
